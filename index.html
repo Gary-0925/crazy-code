@@ -1,11 +1,10 @@
 <!DOCTYPE html>
-
 <html lang="zh-CN">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>极致宏混淆器 · 嵌套宏 + 等长混沌</title>
+    <title>C++ 源代码混淆器</title>
     <style>
         body {
             background: #1e1e1e;
@@ -61,7 +60,6 @@
             height: 300px;
             font-family: 'Consolas', monospace;
             font-size: 14px;
-            white-space: pre-wrap;
             word-break: break-all;
         }
 
@@ -75,47 +73,35 @@
 
 <body>
     <div class="container">
-        <h1>⚡ 仿样例嵌套宏混淆器 · 等长混沌 ⚡</h1>
-        <p>将普通C++代码转换成<strong>嵌套宏定义</strong>形式：每个标识符映射为 <code>_000AAA</code> 宏，每行代码定义为一个行宏，最后用顶级宏 <code>_FINAL</code>
-            组合。所有宏定义行通过注释填充到相同长度（预处理指令原样保留）。</p>
-        <textarea id="input" placeholder="输入你的C++代码（可包含预处理指令）">
-// Copyright 2026 (C) Gary0
-// All rights reserved
-#define debug
-#include &lt;bits/stdc++.h&gt;
-#define inf 0x3f3f3f3f
-typedef long long LL;
-using namespace std;
-
-int a, b;
-
-int main()
-{
-    ios::sync_with_stdio(0), cin.tie(0), cout.tie(0);
-    cin &gt;&gt; a &gt;&gt; b;
-    cout &lt;&lt; a + b;
-    return 0;
-}
-        </textarea>
+        <h1>C++ 源代码混淆器</h1>
+        <p>仅供娱乐使用</p>
+        <textarea id="input" placeholder="输入你的 C++ 代码"></textarea>
         <br>
-        <button onclick="obfuscate()">混沌</button>
-        <h3>混淆结果（可直接复制，预处理后即为原代码）:</h3>
-        <div id="output" class="output"></div>
-        <div class="footer">
-            * 标识符（含关键字）→ <code>_000AAA</code> 格式宏名；<br>
-            * 每行非预处理代码 → 行宏（如 <code>_LIN000</code>）；<br>
-            * 顶级宏 <code>_FINAL</code> 按顺序组合所有行宏；<br>
-            * 所有宏定义行及调用行通过 <code>/*...*/</code> 填充到相同长度。
-        </div>
+        <button onclick="obfuscate()">混淆</button>
+        <textarea id="output" class="output" placeholder="混淆结果"></textarea>
     </div>
 
     <script>
         (function () {
             // ---------- 工具函数 ----------
-            // 生成随机注释片段（用于填充）
-            function randomComment() {
-                const len = Math.floor(Math.random() * 20) + 5; // 5~24 空格
-                return '/*' + ' '.repeat(len) + '*/';
+            // 根据长度生成填充字符串
+            function makePadding(len) {
+                if (len >= 4) {
+                    let ans = "";
+                    while (len > 0) {
+                        if (len >= 5) {
+                            let spaceLen = Math.min(len - 5, Math.floor(Math.random() * 11)); // 注释内空格长度随机 0~10
+                            ans += ' /*' + ' '.repeat(spaceLen) + '*/';
+                            len -= 5 + spaceLen;
+                        } else {
+                            ans += ' '.repeat(len);
+                            len = 0;
+                        }
+                    }
+                    return ans;
+                } else {
+                    return ' '.repeat(len);
+                }
             }
 
             // 将索引转换为宏名 _000AAA 格式 (idx 从0开始)
@@ -192,7 +178,6 @@ int main()
                 let i = 0;
                 const len = line.length;
                 let state = 'normal';
-                let currentToken = '';
                 while (i < len) {
                     const ch = line[i];
                     if (state === 'normal') {
@@ -239,7 +224,6 @@ int main()
                             continue;
                         }
                         // 处理操作符/数字/标点：单独作为一个 token
-                        // 注意数字可能包含小数点等，但这里简单按连续非空白字符处理
                         if (!/\s/.test(ch)) {
                             let start = i;
                             // 收集连续非空白字符（即一个 token）
@@ -250,14 +234,9 @@ int main()
                             tokens.push(tok);
                             continue;
                         } else {
-                            // 空白跳过，但保留 token 间的分隔（由后续拼接时加空格实现）
+                            // 空白跳过
                             i++;
                         }
-                    } else if (state === 'string') {
-                        // 已在上面处理，不会到这里
-                        i++;
-                    } else if (state === 'char') {
-                        i++;
                     } else if (state === 'blockComment') {
                         if (ch === '*' && i + 1 < len && line[i + 1] === '/') {
                             state = 'normal';
@@ -265,29 +244,86 @@ int main()
                         } else {
                             i++;
                         }
+                    } else {
+                        i++;
                     }
                 }
                 // 用空格连接所有 token
                 return tokens.join(' ');
             }
 
-            // 填充行到指定长度（添加注释）
-            function padLine(line, targetLen) {
-                let current = line.length;
-                if (current >= targetLen) return line;
-                let need = targetLen - current;
-                if (need < 4) {
-                    return line + ' '.repeat(need);
+            // 新的填充函数：在 token 之间随机插入注释，使行长度达到 targetLen
+            function insertPadding(line, targetLen) {
+                // 将行按空白分割成 token 数组（忽略原始空白，重新构建）
+                const tokens = line.split(/\s+/).filter(t => t.length > 0);
+                if (tokens.length === 0) {
+                    // 空行，直接填充空格
+                    return ' '.repeat(targetLen);
                 }
-                // 用 /*...*/ 填充
-                return line + '/*' + ' '.repeat(need - 4) + '*/';
+
+                // 计算基础长度（用单个空格分隔的字符串长度）
+                const baseLen = tokens.join(' ').length;
+                if (baseLen >= targetLen) {
+                    return line; // 已经足够，但通常不会
+                }
+
+                let need = targetLen - baseLen;
+
+                // 间隙数量 = token数 + 1（开头和结尾也可以插入填充）
+                const gaps = tokens.length + 1;
+                // 初始化每个间隙的填充量
+                const fill = new Array(gaps).fill(0);
+
+                // 随机分配 need 到各个间隙
+                while (need > 0) {
+                    // 随机选择一个间隙
+                    const idx = Math.floor(Math.random() * gaps);
+                    // 决定本次填充长度
+                    let len;
+                    if (need >= 4) {
+                        // 随机 4 到 need 之间
+                        len = Math.floor(Math.random() * (need - 3)) + 4;
+                    } else {
+                        len = need; // 剩余不足4，只能加空格
+                    }
+                    fill[idx] += len;
+                    need -= len;
+                }
+
+                // 构建最终行
+                let result = '';
+
+                // 开头填充
+                if (fill[0] > 0) {
+                    result += makePadding(fill[0]);
+                }
+
+                for (let i = 0; i < tokens.length; i++) {
+                    result += tokens[i];
+                    // 如果不是最后一个token，或者最后一个token后需要填充
+                    if (i < tokens.length - 1) {
+                        // token 之间至少加一个空格（保证分隔）
+                        result += ' ';
+                        if (fill[i + 1] > 0) {
+                            result += makePadding(fill[i + 1]);
+                        }
+                    } else {
+                        // 最后一个token后面
+                        if (fill[tokens.length] > 0) {
+                            // 如果最后一个token后有填充，直接追加（无需额外空格，填充本身可能含空格）
+                            result += makePadding(fill[tokens.length]);
+                        }
+                    }
+                }
+
+                return result;
             }
 
             // 主混淆函数
             window.obfuscate = function () {
                 const input = document.getElementById('input').value;
                 if (!input.trim()) {
-                    document.getElementById('output').innerText = '请输入代码！';
+                    document.getElementById('output').value = '';
                     return;
                 }
 
@@ -296,12 +332,10 @@ int main()
                 const codeLines = [];         // 普通代码行
 
                 for (let rawLine of lines) {
-                    // 去除行首空白后判断是否以#开头
                     const trimmed = rawLine.trim();
                     if (trimmed.startsWith('#')) {
                         preprocessLines.push(rawLine); // 保留原行（包括缩进）
                     } else {
-                        // 忽略空行？保留空行可能产生空行宏，但为了简洁，忽略完全空行
                         if (rawLine.trim() !== '') {
                             codeLines.push(rawLine);
                         }
@@ -356,7 +390,7 @@ int main()
                     finalCallLine
                 ];
 
-                // 计算最大长度
+                // 计算最大长度（基于原始行，不含填充）
                 let maxLen = 0;
                 for (let line of allLinesToPad) {
                     if (line.length > maxLen) maxLen = line.length;
@@ -364,11 +398,11 @@ int main()
                 // 目标长度 = 最大长度 + 随机偏移 10~30
                 const targetLen = maxLen + Math.floor(Math.random() * 20) + 10;
 
-                // 填充每一行
-                const paddedIdent = identMacroLines.map(l => padLine(l, targetLen));
-                const paddedLineMacros = lineMacroLines.map(l => padLine(l, targetLen));
-                const paddedFinalMacro = padLine(finalMacroLine, targetLen);
-                const paddedFinalCall = padLine(finalCallLine, targetLen);
+                // 使用新的插入填充函数处理每一行
+                const paddedIdent = identMacroLines.map(l => insertPadding(l, targetLen));
+                const paddedLineMacros = lineMacroLines.map(l => insertPadding(l, targetLen));
+                const paddedFinalMacro = insertPadding(finalMacroLine, targetLen);
+                const paddedFinalCall = insertPadding(finalCallLine, targetLen);
 
                 // 组装输出
                 let output = '';
@@ -391,7 +425,7 @@ int main()
                 // 最终调用
                 output += paddedFinalCall + '\n';
 
-                document.getElementById('output').innerText = output;
+                document.getElementById('output').value = output;
             };
         })();
     </script>
