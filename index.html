@@ -172,7 +172,7 @@
                 }
             }
 
-            // 替换行中的标识符为宏名，并返回 token 序列（用空格分隔）
+            // 替换行中的标识符为宏名，并返回 token 数组（每个 token 是字符串或宏名）
             function replaceLine(line, macroMap) {
                 let tokens = [];
                 let i = 0;
@@ -248,43 +248,37 @@
                         i++;
                     }
                 }
-                // 用空格连接所有 token
-                return tokens.join(' ');
+                return tokens; // 返回 token 数组
             }
 
-            // 新的填充函数：在 token 之间随机插入注释，使行长度达到 targetLen
-            function insertPadding(line, targetLen) {
-                // 将行按空白分割成 token 数组（忽略原始空白，重新构建）
-                const tokens = line.split(/\s+/).filter(t => t.length > 0);
+            // 填充函数：在 token 数组的间隙插入注释，使行长度达到 targetLen
+            // 参数 tokens: 原始 token 数组（每个 token 是字符串，如宏名、操作符、字符串字面量）
+            // 返回填充后的字符串
+            function insertPaddingFromTokens(tokens, targetLen) {
                 if (tokens.length === 0) {
-                    // 空行，直接填充空格
                     return ' '.repeat(targetLen);
                 }
 
                 // 计算基础长度（用单个空格分隔的字符串长度）
                 const baseLen = tokens.join(' ').length;
                 if (baseLen >= targetLen) {
-                    return line; // 已经足够，但通常不会
+                    return tokens.join(' '); // 已经足够，但通常不会
                 }
 
                 let need = targetLen - baseLen;
 
-                // 间隙数量 = token数 + 1（开头和结尾也可以插入填充）
+                // 间隙数量 = token数 + 1（开头和结尾）
                 const gaps = tokens.length + 1;
-                // 初始化每个间隙的填充量
                 const fill = new Array(gaps).fill(0);
 
                 // 随机分配 need 到各个间隙
                 while (need > 0) {
-                    // 随机选择一个间隙
                     const idx = Math.floor(Math.random() * gaps);
-                    // 决定本次填充长度
                     let len;
                     if (need >= 4) {
-                        // 随机 4 到 need 之间
                         len = Math.floor(Math.random() * (need - 3)) + 4;
                     } else {
-                        len = need; // 剩余不足4，只能加空格
+                        len = need;
                     }
                     fill[idx] += len;
                     need -= len;
@@ -300,17 +294,13 @@
 
                 for (let i = 0; i < tokens.length; i++) {
                     result += tokens[i];
-                    // 如果不是最后一个token，或者最后一个token后需要填充
                     if (i < tokens.length - 1) {
-                        // token 之间至少加一个空格（保证分隔）
                         result += ' ';
                         if (fill[i + 1] > 0) {
                             result += makePadding(fill[i + 1]);
                         }
                     } else {
-                        // 最后一个token后面
                         if (fill[tokens.length] > 0) {
-                            // 如果最后一个token后有填充，直接追加（无需额外空格，填充本身可能含空格）
                             result += makePadding(fill[tokens.length]);
                         }
                     }
@@ -334,7 +324,7 @@
                 for (let rawLine of lines) {
                     const trimmed = rawLine.trim();
                     if (trimmed.startsWith('#')) {
-                        preprocessLines.push(rawLine); // 保留原行（包括缩进）
+                        preprocessLines.push(rawLine);
                     } else {
                         if (rawLine.trim() !== '') {
                             codeLines.push(rawLine);
@@ -348,7 +338,7 @@
                     collectIdentifiers(line, idSet);
                 }
 
-                // 将标识符排序，分配宏名 (格式 _000AAA)
+                // 将标识符排序，分配宏名
                 const sortedIds = Array.from(idSet).sort();
                 const macroMap = new Map();
                 let idx = 0;
@@ -357,8 +347,8 @@
                     idx++;
                 }
 
-                // 第二遍：替换每行代码，生成该行的替换后内容
-                const replacedLines = codeLines.map(line => replaceLine(line, macroMap));
+                // 第二遍：替换每行代码，得到 token 数组
+                const replacedTokensList = codeLines.map(line => replaceLine(line, macroMap));
 
                 // 生成所有标识符的宏定义行
                 const identMacroLines = [];
@@ -366,13 +356,14 @@
                     identMacroLines.push(`#define ${macro} ${ident}`);
                 }
 
-                // 生成行宏定义：为每一行代码生成一个宏名
+                // 生成行宏定义：为每一行代码生成一个宏名，宏体为 token 数组用空格连接
                 const lineMacroLines = [];
                 const lineMacroNames = [];
-                for (let i = 0; i < replacedLines.length; i++) {
+                for (let i = 0; i < replacedTokensList.length; i++) {
                     const lineMacro = idxToMacro(idx, '_');
                     lineMacroNames.push(lineMacro);
-                    lineMacroLines.push(`#define ${lineMacro} ${replacedLines[i]}`);
+                    const lineBody = replacedTokensList[i].join(' ');
+                    lineMacroLines.push(`#define ${lineMacro} ${lineBody}`);
                     idx++;
                 }
 
@@ -382,7 +373,7 @@
                 const finalMacroLine = `#define ${finalMacroName} ${finalMacroBody}`;
                 const finalCallLine = finalMacroName;
 
-                // 收集所有需要填充长度的行（标识符宏定义、行宏定义、最终宏定义、最终调用行）
+                // 收集所有需要填充长度的行
                 const allLinesToPad = [
                     ...identMacroLines,
                     ...lineMacroLines,
@@ -390,40 +381,71 @@
                     finalCallLine
                 ];
 
-                // 计算最大长度（基于原始行，不含填充）
+                // 计算最大长度
                 let maxLen = 0;
                 for (let line of allLinesToPad) {
                     if (line.length > maxLen) maxLen = line.length;
                 }
-                // 目标长度 = 最大长度 + 随机偏移 10~30
                 const targetLen = maxLen + Math.floor(Math.random() * 20) + 10;
 
-                // 使用新的插入填充函数处理每一行
-                const paddedIdent = identMacroLines.map(l => insertPadding(l, targetLen));
-                const paddedLineMacros = lineMacroLines.map(l => insertPadding(l, targetLen));
-                const paddedFinalMacro = insertPadding(finalMacroLine, targetLen);
-                const paddedFinalCall = insertPadding(finalCallLine, targetLen);
+                // 填充函数：对于普通宏定义行，我们需要将其拆分为 token 数组吗？不，这些行是简单的 #define 宏 值，值中可能包含空格（比如行宏体），但行宏体已经是空格连接的 token，我们需要保留其结构。实际上，对于 #define 行，我们也可以将其视为 token 数组：["#define", macro, ...] 但为了简化，我们仍使用字符串填充，但注意这些行的值部分可能包含空格（如行宏体），但行宏体本身是由 token 组成的，如果我们用 split 会再次拆分字符串字面量？不，行宏体中的字符串字面量已经是完整的，例如 `"\n\nError : 111 111 111"` 作为一个 token 被连接时，它本身没有内部空格？实际上它内部有空格，但作为字符串，它在 join 时被当作一个整体，所以行宏体字符串是 `_000AAB << "\n\nError : 111 111 111"`，其中字符串部分包含空格，但整体是连续的。当我们用 split 分割这个字符串时，空格仍然会分割它！所以对于行宏定义，其值部分也可能包含带空格的字符串，我们需要同样处理。
+
+                // 因此，我们需要对每一行进行 token 化填充。但行宏定义本身是一个字符串，我们如何安全地填充？我们可以将每行视为由固定部分和可变部分组成，但最安全的方法是：对于标识符宏定义，其值只是一个标识符，没有空格；对于行宏定义，其值是 token 连接而成，我们实际上已经有了该行的 token 数组（replacedTokensList[i]），所以我们可以基于 token 数组构建填充，而不是基于字符串。
+
+                // 更好的做法：为每一行（包括标识符宏定义）也保存 token 数组，然后统一用 insertPaddingFromTokens 填充。
+                // 标识符宏定义可以看作 token 数组：["#define", macro, ident]
+                // 行宏定义：["#define", lineMacro, ...] 其中第三个及以后的 token 是 replacedTokensList[i] 展开的 token 数组。
+                // 最终宏定义：["#define", finalMacroName, ...] 其中第三个及以后的 token 是 lineMacroNames 数组（每个是宏名）。
+                // 最终调用行：["_FINAL"]
+
+                // 因此，我们需要为每行构建 token 数组，然后填充。
+
+                function buildTokenArrayForDefine(macro, valueTokens) {
+                    // valueTokens 可以是字符串数组（如标识符的单个 token，或多个 token）
+                    return ['#define', macro, ...valueTokens];
+                }
+
+                // 构建所有行的 token 数组
+                const linesToPadTokens = [];
+
+                // 标识符宏定义
+                for (let [ident, macro] of macroMap.entries()) {
+                    linesToPadTokens.push(buildTokenArrayForDefine(macro, [ident]));
+                }
+
+                // 行宏定义
+                for (let i = 0; i < replacedTokensList.length; i++) {
+                    const lineMacro = lineMacroNames[i];
+                    linesToPadTokens.push(buildTokenArrayForDefine(lineMacro, replacedTokensList[i]));
+                }
+
+                // 最终宏定义
+                linesToPadTokens.push(buildTokenArrayForDefine(finalMacroName, lineMacroNames));
+
+                // 最终调用行
+                linesToPadTokens.push([finalMacroName]);
+
+                // 计算最大长度：先计算每个 token 数组用空格连接的长度
+                let maxBaseLen = 0;
+                for (let tokens of linesToPadTokens) {
+                    const len = tokens.join(' ').length;
+                    if (len > maxBaseLen) maxBaseLen = len;
+                }
+                const targetLen2 = maxBaseLen + Math.floor(Math.random() * 20) + 10;
+
+                // 对每个 token 数组进行填充
+                const paddedLines = linesToPadTokens.map(tokens => insertPaddingFromTokens(tokens, targetLen2));
 
                 // 组装输出
                 let output = '';
-                // 预处理指令原样输出
                 for (let pl of preprocessLines) {
                     output += pl + '\n';
                 }
-                if (preprocessLines.length > 0) output += '\n'; // 空行分隔
+                if (preprocessLines.length > 0) output += '\n';
 
-                // 标识符宏定义
-                for (let line of paddedIdent) {
+                for (let line of paddedLines) {
                     output += line + '\n';
                 }
-                // 行宏定义
-                for (let line of paddedLineMacros) {
-                    output += line + '\n';
-                }
-                // 最终宏定义
-                output += paddedFinalMacro + '\n';
-                // 最终调用
-                output += paddedFinalCall + '\n';
 
                 document.getElementById('output').value = output;
             };
