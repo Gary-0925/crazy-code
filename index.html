@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极致宏混淆器 · 嵌套宏 + 等长混沌</title>
+    <style>
+        body {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Consolas', monospace;
+            margin: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #569cd6;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 10px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 300px;
+            background: #2d2d30;
+            color: #d4d4d4;
+            border: 1px solid #3e3e42;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            padding: 10px;
+            resize: vertical;
+            white-space: pre;
+            overflow: auto;
+        }
+
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+
+        button:hover {
+            background: #1177bb;
+        }
+
+        .output {
+            background: #2d2d30;
+            border: 1px solid #3e3e42;
+            padding: 10px;
+            height: 300px;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #6a9955;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>⚡ 仿样例嵌套宏混淆器 · 等长混沌 ⚡</h1>
+        <p>将普通C++代码转换成<strong>嵌套宏定义</strong>形式：每个标识符映射为 <code>_000AAA</code> 宏，每行代码定义为一个行宏，最后用顶级宏 <code>_FINAL</code>
+            组合。所有宏定义行通过注释填充到相同长度（预处理指令原样保留）。</p>
+        <textarea id="input" placeholder="输入你的C++代码（可包含预处理指令）">
+// Copyright 2026 (C) Gary0
+// All rights reserved
+#define debug
+#include &lt;bits/stdc++.h&gt;
+#define inf 0x3f3f3f3f
+typedef long long LL;
+using namespace std;
+
+int a, b;
+
+int main()
+{
+    ios::sync_with_stdio(0), cin.tie(0), cout.tie(0);
+    cin &gt;&gt; a &gt;&gt; b;
+    cout &lt;&lt; a + b;
+    return 0;
+}
+        </textarea>
+        <br>
+        <button onclick="obfuscate()">混沌</button>
+        <h3>混淆结果（可直接复制，预处理后即为原代码）:</h3>
+        <div id="output" class="output"></div>
+        <div class="footer">
+            * 标识符（含关键字）→ <code>_000AAA</code> 格式宏名；<br>
+            * 每行非预处理代码 → 行宏（如 <code>_LIN000</code>）；<br>
+            * 顶级宏 <code>_FINAL</code> 按顺序组合所有行宏；<br>
+            * 所有宏定义行及调用行通过 <code>/*...*/</code> 填充到相同长度。
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            // ---------- 工具函数 ----------
+            // 生成随机注释片段（用于填充）
+            function randomComment() {
+                const len = Math.floor(Math.random() * 20) + 5; // 5~24 空格
+                return '/*' + ' '.repeat(len) + '*/';
+            }
+
+            // 将索引转换为宏名 _000AAA 格式 (idx 从0开始)
+            function idxToMacro(idx, prefix = '_') {
+                const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                const totalLetters = 26 * 26 * 26; // 17576
+                let numPart = Math.floor(idx / totalLetters);
+                let letterPart = idx % totalLetters;
+                let l1 = letters[Math.floor(letterPart / 676)];
+                let l2 = letters[Math.floor((letterPart % 676) / 26)];
+                let l3 = letters[letterPart % 26];
+                let numStr = numPart.toString().padStart(3, '0');
+                return prefix + numStr + l1 + l2 + l3;
+            }
+
+            // 词法分析：收集行中所有标识符（排除字符串/字符/注释）
+            function collectIdentifiers(line, idSet) {
+                let i = 0;
+                const len = line.length;
+                let state = 'normal';
+                while (i < len) {
+                    const ch = line[i];
+                    if (state === 'normal') {
+                        if (ch === '/' && i + 1 < len) {
+                            if (line[i + 1] === '/') { // 行注释，跳过剩余
+                                break;
+                            } else if (line[i + 1] === '*') { // 块注释开始
+                                state = 'blockComment';
+                                i += 2;
+                                continue;
+                            }
+                        }
+                        if (ch === '"') {
+                            state = 'string';
+                            i++;
+                            continue;
+                        }
+                        if (ch === '\'') {
+                            state = 'char';
+                            i++;
+                            continue;
+                        }
+                        if (/[a-zA-Z_]/.test(ch)) { // 标识符开始
+                            let start = i;
+                            while (i < len && /[a-zA-Z0-9_]/.test(line[i])) i++;
+                            let ident = line.substring(start, i);
+                            idSet.add(ident);
+                            continue;
+                        } else {
+                            i++;
+                        }
+                    } else if (state === 'string') {
+                        if (ch === '\\') i += 2;
+                        else if (ch === '"') { state = 'normal'; i++; }
+                        else i++;
+                    } else if (state === 'char') {
+                        if (ch === '\\') i += 2;
+                        else if (ch === '\'') { state = 'normal'; i++; }
+                        else i++;
+                    } else if (state === 'blockComment') {
+                        if (ch === '*' && i + 1 < len && line[i + 1] === '/') {
+                            state = 'normal';
+                            i += 2;
+                        } else {
+                            i++;
+                        }
+                    }
+                }
+            }
+
+            // 替换行中的标识符为宏名，并返回 token 序列（用空格分隔）
+            function replaceLine(line, macroMap) {
+                let tokens = [];
+                let i = 0;
+                const len = line.length;
+                let state = 'normal';
+                let currentToken = '';
+                while (i < len) {
+                    const ch = line[i];
+                    if (state === 'normal') {
+                        if (ch === '/' && i + 1 < len) {
+                            if (line[i + 1] === '/') { // 行注释，跳过剩余，不输出
+                                break;
+                            } else if (line[i + 1] === '*') { // 块注释，跳过
+                                state = 'blockComment';
+                                i += 2;
+                                continue;
+                            }
+                        }
+                        if (ch === '"') {
+                            // 字符串整体作为一个 token
+                            let start = i;
+                            i++;
+                            while (i < len) {
+                                if (line[i] === '\\' && i + 1 < len) i += 2;
+                                else if (line[i] === '"') break;
+                                else i++;
+                            }
+                            if (i < len) i++; // 跳过闭引号
+                            tokens.push(line.substring(start, i));
+                            continue;
+                        }
+                        if (ch === '\'') {
+                            let start = i;
+                            i++;
+                            while (i < len) {
+                                if (line[i] === '\\' && i + 1 < len) i += 2;
+                                else if (line[i] === '\'') break;
+                                else i++;
+                            }
+                            if (i < len) i++;
+                            tokens.push(line.substring(start, i));
+                            continue;
+                        }
+                        if (/[a-zA-Z_]/.test(ch)) {
+                            let start = i;
+                            while (i < len && /[a-zA-Z0-9_]/.test(line[i])) i++;
+                            let ident = line.substring(start, i);
+                            let macro = macroMap.get(ident);
+                            tokens.push(macro); // 标识符替换为宏名
+                            continue;
+                        }
+                        // 处理操作符/数字/标点：单独作为一个 token
+                        // 注意数字可能包含小数点等，但这里简单按连续非空白字符处理
+                        if (!/\s/.test(ch)) {
+                            let start = i;
+                            // 收集连续非空白字符（即一个 token）
+                            while (i < len && !/\s/.test(line[i]) && line[i] !== '"' && line[i] !== '\'' && !(line[i] === '/' && i + 1 < len && (line[i + 1] == '/' || line[i + 1] == '*'))) {
+                                i++;
+                            }
+                            let tok = line.substring(start, i);
+                            tokens.push(tok);
+                            continue;
+                        } else {
+                            // 空白跳过，但保留 token 间的分隔（由后续拼接时加空格实现）
+                            i++;
+                        }
+                    } else if (state === 'string') {
+                        // 已在上面处理，不会到这里
+                        i++;
+                    } else if (state === 'char') {
+                        i++;
+                    } else if (state === 'blockComment') {
+                        if (ch === '*' && i + 1 < len && line[i + 1] === '/') {
+                            state = 'normal';
+                            i += 2;
+                        } else {
+                            i++;
+                        }
+                    }
+                }
+                // 用空格连接所有 token
+                return tokens.join(' ');
+            }
+
+            // 填充行到指定长度（添加注释）
+            function padLine(line, targetLen) {
+                let current = line.length;
+                if (current >= targetLen) return line;
+                let need = targetLen - current;
+                if (need < 4) {
+                    return line + ' '.repeat(need);
+                }
+                // 用 /*...*/ 填充
+                return line + '/*' + ' '.repeat(need - 4) + '*/';
+            }
+
+            // 主混淆函数
+            window.obfuscate = function () {
+                const input = document.getElementById('input').value;
+                if (!input.trim()) {
+                    document.getElementById('output').innerText = '请输入代码！';
+                    return;
+                }
+
+                const lines = input.split('\n');
+                const preprocessLines = [];   // 预处理指令行（以#开头，忽略前面空白）
+                const codeLines = [];         // 普通代码行
+
+                for (let rawLine of lines) {
+                    // 去除行首空白后判断是否以#开头
+                    const trimmed = rawLine.trim();
+                    if (trimmed.startsWith('#')) {
+                        preprocessLines.push(rawLine); // 保留原行（包括缩进）
+                    } else {
+                        // 忽略空行？保留空行可能产生空行宏，但为了简洁，忽略完全空行
+                        if (rawLine.trim() !== '') {
+                            codeLines.push(rawLine);
+                        }
+                    }
+                }
+
+                // 第一遍：收集所有代码行中的标识符
+                const idSet = new Set();
+                for (let line of codeLines) {
+                    collectIdentifiers(line, idSet);
+                }
+
+                // 将标识符排序，分配宏名 (格式 _000AAA)
+                const sortedIds = Array.from(idSet).sort();
+                const macroMap = new Map();
+                let idx = 0;
+                for (let i = 0; i < sortedIds.length; i++) {
+                    macroMap.set(sortedIds[i], idxToMacro(idx, '_'));
+                    idx++;
+                }
+
+                // 第二遍：替换每行代码，生成该行的替换后内容
+                const replacedLines = codeLines.map(line => replaceLine(line, macroMap));
+
+                // 生成所有标识符的宏定义行
+                const identMacroLines = [];
+                for (let [ident, macro] of macroMap.entries()) {
+                    identMacroLines.push(`#define ${macro} ${ident}`);
+                }
+
+                // 生成行宏定义：为每一行代码生成一个宏名
+                const lineMacroLines = [];
+                const lineMacroNames = [];
+                for (let i = 0; i < replacedLines.length; i++) {
+                    const lineMacro = idxToMacro(idx, '_');
+                    lineMacroNames.push(lineMacro);
+                    lineMacroLines.push(`#define ${lineMacro} ${replacedLines[i]}`);
+                    idx++;
+                }
+
+                // 生成顶级宏 _FINAL
+                const finalMacroName = '_FINAL';
+                const finalMacroBody = lineMacroNames.join(' ');
+                const finalMacroLine = `#define ${finalMacroName} ${finalMacroBody}`;
+                const finalCallLine = finalMacroName;
+
+                // 收集所有需要填充长度的行（标识符宏定义、行宏定义、最终宏定义、最终调用行）
+                const allLinesToPad = [
+                    ...identMacroLines,
+                    ...lineMacroLines,
+                    finalMacroLine,
+                    finalCallLine
+                ];
+
+                // 计算最大长度
+                let maxLen = 0;
+                for (let line of allLinesToPad) {
+                    if (line.length > maxLen) maxLen = line.length;
+                }
+                // 目标长度 = 最大长度 + 随机偏移 10~30
+                const targetLen = maxLen + Math.floor(Math.random() * 20) + 10;
+
+                // 填充每一行
+                const paddedIdent = identMacroLines.map(l => padLine(l, targetLen));
+                const paddedLineMacros = lineMacroLines.map(l => padLine(l, targetLen));
+                const paddedFinalMacro = padLine(finalMacroLine, targetLen);
+                const paddedFinalCall = padLine(finalCallLine, targetLen);
+
+                // 组装输出
+                let output = '';
+                // 预处理指令原样输出
+                for (let pl of preprocessLines) {
+                    output += pl + '\n';
+                }
+                if (preprocessLines.length > 0) output += '\n'; // 空行分隔
+
+                // 标识符宏定义
+                for (let line of paddedIdent) {
+                    output += line + '\n';
+                }
+                // 行宏定义
+                for (let line of paddedLineMacros) {
+                    output += line + '\n';
+                }
+                // 最终宏定义
+                output += paddedFinalMacro + '\n';
+                // 最终调用
+                output += paddedFinalCall + '\n';
+
+                document.getElementById('output').innerText = output;
+            };
+        })();
+    </script>
+</body>
+
+</html>
