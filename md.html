@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>markdown 水印工具</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0 0 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .desc {
+            color: #666;
+            font-size: 13px;
+            margin-bottom: 24px;
+            border-left: 3px solid #ff9800;
+            padding-left: 12px;
+        }
+        .toolbar {
+            background: white;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            border: 1px solid #e0e0e0;
+        }
+        .field {
+            flex: 1;
+            min-width: 160px;
+        }
+        .field label {
+            font-size: 12px;
+            font-weight: 500;
+            display: block;
+            margin-bottom: 6px;
+            color: #555;
+        }
+        .field input, .field select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        button {
+            background: #1e1e1e;
+            border: none;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: 500;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        button:hover {
+            background: #333;
+        }
+        .row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .panel {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            border: 1px solid #e0e0e0;
+        }
+        .panel-header {
+            padding: 12px 16px;
+            background: #fafafa;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 500;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+        }
+        textarea {
+            width: 100%;
+            height: 500px;
+            padding: 16px;
+            border: none;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            resize: vertical;
+            outline: none;
+        }
+        .note {
+            background: #fff8e7;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 12px;
+            color: #8a6e2a;
+            margin-top: 20px;
+            border-left: 3px solid #ffc107;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 32px;
+            font-size: 11px;
+            color: #aaa;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .checkbox-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .checkbox-field input {
+            width: 16px;
+            height: 16px;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>markdown 水印工具</h1>
+    <div class="desc">把文字藏进「空格」里，阅读时看不见，复制时原样出现</div>
+
+    <div class="toolbar">
+        <div class="field">
+            <label>透明图片链接 (1x1像素)</label>
+            <input type="text" id="imageUrl" value="https://cdn.luogu.com.cn/upload/image_hosting/dy65eqbo.png">
+        </div>
+        <div class="field">
+            <label>要添加的水印</label>
+            <input type="text" id="hiddenText" value="转载请注明出处">
+        </div>
+        <div class="field">
+            <label>干扰乱码 (防搜索)</label>
+            <select id="noiseLevel">
+                <option value="none">无乱码</option>
+                <option value="short" selected>短乱码 (5~12字符)</option>
+                <option value="medium">中等乱码 (15~30字符)</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>替换方式</label>
+            <select id="probability">
+                <option value="0.1">10% 的空格</option>
+                <option value="0.3" selected>30% 的空格</option>
+                <option value="0.5">50% 的空格</option>
+                <option value="0.8">80% 的空格</option>
+                <option value="1.0">100% 的空格</option>
+            </select>
+        </div>
+        <div class="field">
+            <div class="checkbox-field">
+                <input type="checkbox" id="addAtNewline" checked>
+                <label>在每个段落后添加水印</label>
+            </div>
+        </div>
+        <button id="copyBtn">📋 复制</button>
+    </div>
+
+    <div class="row">
+        <div class="panel">
+            <div class="panel-header">
+                原始 markdown
+            </div>
+            <textarea id="inputMd" placeholder="要添加水印的 markdown"></textarea>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                水印 markdown
+            </div>
+            <textarea id="outputMd" readonly placeholder="添加水印后的 markdown"></textarea>
+        </div>
+    </div>
+
+    <div class="note">
+        <strong>原理</strong>：把普通空格替换成 <code>![隐藏文字](透明图)</code>。<br>
+        阅读时图片透明，看起来就像普通空格。<br>
+        全选复制时，隐藏文字会一起被复制走。<br>
+        自动跳过：代码块、行内代码、LaTeX 公式、链接 URL、图片语法、HTML 标签、Markdown 特殊字符后的空格、换行符前的连续空格。<br>
+        <strong>新增</strong>：开启后，会在每个换行符前自动添加水印（如果该位置没有空格）。<br>
+        乱码让 Ctrl+F 难以一次性删光水印。
+    </div>
+    <div class="footer">markdown 水印工具 | © 2026 Gary0. All rights reserved.</div>
+</div>
+
+<script>
+    (function() {
+        const imageUrlInput = document.getElementById('imageUrl');
+        const hiddenTextInput = document.getElementById('hiddenText');
+        const noiseLevelSelect = document.getElementById('noiseLevel');
+        const probabilitySelect = document.getElementById('probability');
+        const addAtNewlineCheck = document.getElementById('addAtNewline');
+        const inputArea = document.getElementById('inputMd');
+        const outputArea = document.getElementById('outputMd');
+        const copyBtn = document.getElementById('copyBtn');
+
+        function randomString(minLen, maxLen) {
+            const len = minLen + Math.floor(Math.random() * (maxLen - minLen + 1));
+            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789";
+            let result = '';
+            for (let i = 0; i < len; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        function buildHiddenMessage(base, noiseLevel) {
+            if (noiseLevel === 'none') return base;
+            const gib = noiseLevel === 'short' ? randomString(5, 12) : randomString(15, 30);
+            const r = Math.random();
+            if (r < 0.4) return base + ' ' + gib;
+            if (r < 0.7) return gib + ' ' + base;
+            return gib;
+        }
+
+        function makeInvisibleImage(text, url) {
+            let safe = text.replace(/\]/g, '\\]').replace(/\(/g, '\\(');
+            return '![' + safe + '](' + url + ')';
+        }
+
+        function isInProtectedZone(text, pos) {
+            let codeBlockRegex = /(`{3,}|~{3,})[\s\S]*?\1/g;
+            let match;
+            while ((match = codeBlockRegex.exec(text)) !== null) {
+                if (pos >= match.index && pos < match.index + match[0].length) return true;
+            }
+            
+            let inlineCodeRegex = /`[^`]+`/g;
+            while ((match = inlineCodeRegex.exec(text)) !== null) {
+                if (pos >= match.index && pos < match.index + match[0].length) return true;
+            }
+            
+            let latexBlockRegex = /\$\$[\s\S]*?\$\$/g;
+            while ((match = latexBlockRegex.exec(text)) !== null) {
+                if (pos >= match.index && pos < match.index + match[0].length) return true;
+            }
+            
+            let latexInlineRegex = /(?<!\$)\$(?!\$)[^\$\n]+?\$(?!\$)/g;
+            while ((match = latexInlineRegex.exec(text)) !== null) {
+                if (pos >= match.index && pos < match.index + match[0].length) return true;
+            }
+            
+            let linkUrlRegex = /\]\((https?:\/\/[^\s)]+)\)/g;
+            while ((match = linkUrlRegex.exec(text)) !== null) {
+                if (pos >= match.index && pos < match.index + match[0].length) return true;
+            }
+            
+            let imageRegex = /!\[[^\]]*\]\([^)]+\)/g;
+            while ((match = imageRegex.exec(text)) !== null) {
+                if (pos >= match.index && pos < match.index + match[0].length) return true;
+            }
+            
+            let htmlTagRegex = /<[^>]+>/g;
+            while ((match = htmlTagRegex.exec(text)) !== null) {
+                if (pos >= match.index && pos < match.index + match[0].length) return true;
+            }
+            
+            return false;
+        }
+
+        function isAfterMarkdownChar(text, pos) {
+            if (text[pos] !== ' ') return false;
+            
+            let prevChar, nextChar;
+            if (pos > 0) prevChar = text[pos - 1];
+            if (pos + 1 < text.length) nextChar = text[pos + 1];
+            let markdownChars = ['#', '>', '-', '*', '+', '=', '|', ':', '`', '~', '[', ']', '(', ')', '!', '<'];
+            
+            if (markdownChars.includes(prevChar) || markdownChars.includes(nextChar)) {
+                return true;
+            }
+            
+            let beforeText = text.substring(Math.max(0, pos - 20), pos);
+            if (/^\d+\.\s*$/.test(beforeText)) {
+                return true;
+            }
+            
+            return false;
+        }
+
+        function isSpaceBeforeNewline(text, pos) {
+            if (text[pos] !== ' ') return false;
+            
+            let j = pos;
+            while (j < text.length && text[j] === ' ') {
+                j++;
+            }
+            
+            if (j < text.length && (text[j] === '\n' || text[j] === '\r')) {
+                return true;
+            }
+            
+            return false;
+        }
+
+        function replaceSpacesWithNoise(text, hiddenBase, noiseLevel, imageUrl, probability, addAtNewline) {
+            let result = '';
+            let i = 0;
+            let watermark = makeInvisibleImage(buildHiddenMessage(hiddenBase, noiseLevel), imageUrl);
+            
+            while (i < text.length) {
+                let ch = text[i];
+                
+                if (ch === ' ') {
+                    let inProtected = isInProtectedZone(text, i);
+                    let afterMarkdown = isAfterMarkdownChar(text, i);
+                    let beforeNewline = isSpaceBeforeNewline(text, i);
+                    
+                    let shouldProtect = inProtected || afterMarkdown || beforeNewline;
+                    
+                    if (!shouldProtect && Math.random() < probability) {
+                        result += watermark + ' ';
+                    } else {
+                        result += ' ';
+                    }
+                } else {
+                    result += ch;
+                }
+                i++;
+            }
+            
+            // 在换行前添加水印（如果没有空格）
+            if (addAtNewline) {
+                let finalResult = '';
+                let j = 0;
+                while (j < result.length) {
+                    let ch2 = result[j];
+                    
+                    if (ch2 === '\n' || ch2 === '\r') {
+                        // 检查换行符前面是不是空格
+                        let hasSpaceBefore = (j > 0 && (result[j - 1] === ' ' || result[j - 1] === '\n' || result[j - 1] === '\r' || result[j - 1] === '`' || result[j - 1] === '$'));
+                        // 检查是否在保护区内
+                        let inProtected = isInProtectedZone(result, j);
+                        
+                        if (!hasSpaceBefore && !inProtected) {
+                            finalResult += watermark + ' ';
+                        }
+                    }
+                    finalResult += ch2;
+                    j++;
+                }
+                result = finalResult;
+            }
+            
+            return result;
+        }
+
+        function generate() {
+            let source = inputArea.value;
+            let imageUrl = imageUrlInput.value.trim();
+            let hiddenBase = hiddenTextInput.value.trim();
+            
+            let noiseLevel = noiseLevelSelect.value;
+            let probability = parseFloat(probabilitySelect.value);
+            let addAtNewline = addAtNewlineCheck.checked;
+            
+            let result = replaceSpacesWithNoise(source, hiddenBase, noiseLevel, imageUrl, probability, addAtNewline);
+            outputArea.value = result;
+        }
+        
+        function copyOutput() {
+            navigator.clipboard.writeText(outputArea.value)
+                .then(() => {}).catch(() => alert('手动复制吧'));
+        }
+        
+        function autoGenerate() {
+            generate();
+        }
+        
+        inputArea.addEventListener('input', autoGenerate);
+        imageUrlInput.addEventListener('input', autoGenerate);
+        hiddenTextInput.addEventListener('input', autoGenerate);
+        noiseLevelSelect.addEventListener('change', autoGenerate);
+        probabilitySelect.addEventListener('change', autoGenerate);
+        addAtNewlineCheck.addEventListener('change', autoGenerate);
+        
+        copyBtn.addEventListener('click', copyOutput);
+        
+        setTimeout(autoGenerate, 100);
+    })();
+</script>
+</body>
+</html>
