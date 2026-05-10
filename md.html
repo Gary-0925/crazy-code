@@ -323,7 +323,6 @@
         function replaceSpacesWithNoise(text, hiddenBase, noiseLevel, imageUrl, probability, addAtNewline) {
             let result = '';
             let i = 0;
-            let watermark = makeInvisibleImage(buildHiddenMessage(hiddenBase, noiseLevel), imageUrl);
             
             while (i < text.length) {
                 let ch = text[i];
@@ -336,7 +335,7 @@
                     let shouldProtect = inProtected || afterMarkdown || beforeNewline;
                     
                     if (!shouldProtect && Math.random() < probability) {
-                        result += watermark + ' ';
+                        result += makeInvisibleImage(buildHiddenMessage(hiddenBase, noiseLevel), imageUrl) + ' ';
                     } else {
                         result += ' ';
                     }
@@ -360,7 +359,7 @@
                         let inProtected = isInProtectedZone(result, j);
                         
                         if (!hasSpaceBefore && !inProtected) {
-                            finalResult += watermark + ' ';
+                            finalResult += makeInvisibleImage(buildHiddenMessage(hiddenBase, noiseLevel), imageUrl) + ' ';
                         }
                     }
                     finalResult += ch2;
