@@ -86,19 +86,7 @@
             // ---------- 工具函数 ----------
             // 根据长度生成填充字符串
             function makePadding(len) {
-                if (len >= 4) {
-                    let ans = "";
-                    while (len > 0) {
-                        if (len >= 5) {
-                            let spaceLen = Math.min(len - 5, Math.floor(Math.random() * 11)); // 注释内空格长度随机 0~10
-                            len -= 5 + spaceLen;
-                        } else {
-                            len = 0;
-                        }
-                    }
-                    return ans;
-                } else {
-                }
+                return '';
             }
 
             // 将索引转换为宏名 _000AAA 格式 (idx 从0开始)
